@@ -41,7 +41,7 @@
 #define standByState 3
 #define noTasksPending 0 
 #define sendingPackageDataToWifiTask 1
-#define sensorFeedVoltaje 5
+#define sensorFeedVoltaje 4.67
 // Global Variables
  
 // Change Serial Pins Because Bridge Uses 0 and 1 as Rx and Tx
@@ -126,16 +126,15 @@ timeInterruptHandling();
 
 void loop() {
   
-   // Check if there is any pending task
-   checkForPendingTasks();
 
      
    // Update Timers
    updateTimers();
   
    // Write dataString on the SD CARD on Interrupt Serial Handling Event
+   if(mySerial.available()>0){
    while(mySerial.available()>0){
-      
+       pendingTasks[0] =  sendingPackageDataToWifiTask;
       // Read the Serial 
       myBuffer[index]=(mySerial.read());
       
@@ -152,10 +151,19 @@ void loop() {
       }
       
    }
-    if(mySerial.available()==0){
-        //Serial.println("NoData");
-    }
+     changeState(writingOnSDCardState);
+     pendingTasks[0]=noTasksPending;
+     pendingTasks[1]=noTasksPending;
+   }else{
+         // Check if there is any pending task
+        checkForPendingTasks();   
+        changeState(standByState);
+      }
 
+  
+
+    
+  data ="";
 }
 
 // Method to update my timers
@@ -174,14 +182,14 @@ void checkForPendingTasks(){
     // Do nothing!
   }
   else{
-    
+    Serial.println("tengo tarea pendiente");
     // Check if it's needing to send data to wifi task and its state allows it
     if ((pendingTasks[0]==sendingPackageDataToWifiTask) && (globalState!=writingOnSDCardState))
     {
-      sendPackageDataToWifiModule();
 
       // Set this pending task as noPendingTask
-      pendingTasks[0]=noTasksPending;
+      pendingTasks[0]=noTasksPending;            
+      sendPackageDataToWifiModule();
     }
   }
 }
@@ -307,15 +315,37 @@ void handlingDataReceived(){
     // Check if Character Received Was ACK, which is the last character Karel Serial data and it's 6 in DECIMAL format. If it does, we continue to write the following stuff on SD
     if ((myBuffer[i]==characterOfEnd) && (i==bufferSize-1)){
           
-      // Write Sensors Values 
-      sendTone();
-    
+      // Write Sensors Values on SD read from Analog Inputs
+
+      writeSensorsValuesOnSD();   
+      // send tone 
+     
       // Hold Bytes Values From Karel Data
       holdKarelData();
-      
+     
     }
      
    }  
+}
+
+// Method to write Sensor values on SD from Analog Reads
+void writeSensorsValuesOnSD(){
+
+  // Write Sensors Values Separated By Commas
+  //Serial.println("Data actual "+data);
+  data.concat( String(sensor1Value, DEC)+","+String(sensor2Value, DEC)+","+String(sensor3Value, DEC)+","+String(sensor4Value, DEC)+","+String(sensor5Value, DEC)+","+String(sensor6Value, DEC)+"@");
+
+  Serial.println("Data actual "+data);
+  //Serial.println("");  
+  int k=0;
+  do { 
+  //tone(outPin, frq[i]);
+  tone(outPin,((5 *(( data.charAt(k))-45) + OFFSET) * FREQ_RES));
+  delay(DURATION); 
+  noTone(outPin);
+  } 
+  while (data.charAt(k++) != '@');
+ 
 }
 
 // Method to write data on SD when called
@@ -330,7 +360,8 @@ void writeKarelDataOnSDWithComma(char byteWithCommaReceived){
     // Write Data on SD
     data = data + String(karelInt)+",";
     // Write Separation among bytesF
-      
+     //Serial.println(data);
+
     // Flag to physically know if there is any mistake or if it's writing correctly
     digitalWrite(13, LOW);    // turn the LED off by making the voltage LOW
     
@@ -341,19 +372,18 @@ void writeKarelDataOnSDWithComma(char byteWithCommaReceived){
 void sendTone(void){
  
   // Write Sensors Values Separated By Commas
-  data = data + String(sensor1Value, DEC)+","+String(sensor2Value, DEC)+","+String(sensor3Value, DEC)+","+String(sensor4Value, DEC)+","+String(sensor5Value, DEC)+","+String(sensor6Value, DEC)+"@";
+  data.concat(String(sensor1Value, DEC)+","+String(sensor2Value, DEC)+","+String(sensor3Value, DEC)+","+String(sensor4Value, DEC)+","+String(sensor5Value, DEC)+","+String(sensor6Value, DEC)+"@");
   //Serial.println("");
   
-  int i=0;
+  int k=0;
   do { 
   //tone(outPin, frq[i]);
-  tone(outPin,((5 *(( data.charAt(i))-45) + OFFSET) * FREQ_RES));
+  tone(outPin,((5 *(( data.charAt(k))-45) + OFFSET) * FREQ_RES));
   delay(DURATION); 
   noTone(outPin);
   }
-  while (data.charAt(i++) != '@'); 
-  Serial.println("escribiendo datos..." + data);
-  data ="";
+  while (data.charAt(k++) != '@'); 
+  Serial.println("send tone..." + data);
     
 }
 
@@ -372,8 +402,7 @@ void readSensorsValues(void){
   sensor8Value=calculateRealTemperatureValue(analogRead(sensor7Pin));
   //sensor3Value=analogRead(sensor3Pin);
 
-  Serial.println("Analog Channels Reading");
-  Serial.println("Analog Channels Reading");
+  Serial.println("Analog Channel1 Reading");
   Serial.println(analogRead(sensor1Pin));
   Serial.println(analogRead(sensor2Pin));
   Serial.println(analogRead(sensor3Pin));
@@ -423,6 +452,7 @@ void holdKarelData(){
   Serial.println(karelData3);
   Serial.println(karelData4);
   Serial.println(karelData5);
+
   
 }
 
@@ -448,7 +478,7 @@ void sendPackageDataToWifiModule(){
   
 
   // Debug Comments
-  Serial.println("Sending Data to Wifi Module");
+  Serial.println("Sending Data tone 2 second");
   //handlingDataReceived();
   // Send Karel Data Package to Wifi Module in following order: Outputs Register-Temperature Register-AR Register-T Accumulated Register-Sensor1-Sensor2
   
@@ -495,7 +525,6 @@ void timeInterruptHandling(){
   // Flag to notify the software that something is pending
   pendingTasks[0]=sendingPackageDataToWifiTask;
     
-  Serial.println("Time to Send Data Package");
   Serial.println("Time to Send Data Package");
   
 }
